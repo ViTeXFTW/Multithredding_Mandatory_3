@@ -1,11 +1,11 @@
 # Makefile for main.c
 
-final:
+all:
 	gcc main.c -o main.exe
 
 test:
 	gcc main.c -o main.exe
-	main.exe
+	./main.exe
 
 clean:
 	rm *.o main.exe
