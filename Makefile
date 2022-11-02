@@ -9,3 +9,7 @@ test:
 
 clean:
 	rm *.o main.exe
+
+profile:
+	gcc main.c -o main.exe -pg
+	./main.exe

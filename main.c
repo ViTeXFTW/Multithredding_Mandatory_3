@@ -3,9 +3,21 @@
 //
 
 #include "stdio.h"
+#include<pthread.h>
+#include <stdlib.h>
+#include <string.h>
+
+#include <Windows.h>
+
+typedef struct {
+    pthread_rwlock_t *lock;
+    pthread_t *tid;
+} arg_struct;
+
+pthread_rwlock_t lock_rw = PTHREAD_RWLOCK_INITIALIZER;
 
 //13
-int sudoku[9][9] = {{4, 0, 1, 8, 0, 0, 0, 0, 0},
+char sudoku[9][9] = {{4, 0, 1, 8, 0, 0, 0, 0, 0},
                     {0, 2, 0, 3, 0, 4, 9, 0, 0},
                     {9, 0, 5, 7, 0, 0, 6, 0, 8},
                     {3, 7, 2, 0, 0, 5, 1, 8, 0},
@@ -16,7 +28,7 @@ int sudoku[9][9] = {{4, 0, 1, 8, 0, 0, 0, 0, 0},
                     {0, 0, 4, 0, 0, 0, 0, 0, 9},};
 
 //277
-int sudoku2[9][9] = {{0, 0, 0, 0, 0, 0, 1, 0, 0},
+char sudoku2[9][9] = {{0, 0, 0, 0, 0, 0, 1, 0, 0},
                      {0, 0, 0, 1, 0, 2, 0, 0, 7},
                      {9, 8, 1, 0, 0, 0, 4, 2, 0},
                      {1, 0, 0, 0, 0, 0, 6, 0, 0},
@@ -27,7 +39,7 @@ int sudoku2[9][9] = {{0, 0, 0, 0, 0, 0, 1, 0, 0},
                      {0, 0, 4, 0, 0, 0, 0, 0, 0},};
 
 
-int finalSudoku[9][9] = {{4, 6, 1, 8, 5, 9, 7, 3, 2},
+char finalSudoku[9][9] = {{4, 6, 1, 8, 5, 9, 7, 3, 2},
                          {7, 2, 8, 3, 6, 4, 9, 5, 1},
                          {9, 3, 5, 7, 2, 1, 6, 4, 8},
                          {3, 7, 2, 4, 9, 5, 1, 8, 6},
@@ -51,19 +63,32 @@ void printSudoku() {
     }
 }
 
-int checkSudoku() {
+int checkSudoku(void *vargp) {
+    arg_struct *arg = vargp;
+    pthread_rwlock_t *p = arg->lock;
+    char localSudoku[9][9];
+
+    if (pthread_rwlock_rdlock(p) != 0) {
+        perror("reader_threadC: pthread_rwlock_rdlock error");
+        exit(__LINE__);
+    }
+    memcpy(&localSudoku, &sudoku, sizeof (char) * 9 * 9);
+    if (pthread_rwlock_unlock(p) != 0) {
+        perror("reader thread: pthred_rwlock_unlock error");
+        exit(__LINE__);
+    }
 
     for (int i = 0; i < 9; ++i) {
         char found[9] = {0, 0, 0, 0, 0, 0, 0, 0, 0};
 
         for (int j = 0; j < 9; ++j) {
-            if (sudoku[i][j] == 0) {
+            if (localSudoku[i][j] == 0) {
                 return 0;
             }
-            if (found[sudoku[i][j] - 1]) {
+            if (found[localSudoku[i][j] - 1]) {
                 return 0;
             }
-            found[sudoku[i][j] - 1]++;
+            found[localSudoku[i][j] - 1]++;
         }
     }
 
@@ -72,7 +97,7 @@ int checkSudoku() {
 }
 
 // checkLine goes through each line and checks if the number is present. Returns true if found
-int checkLine(int number, int j) {
+int checkLine(int number, int j, char sudoku[9][9]) {
     for (int i = 0; i < 9; ++i) {
         if (sudoku[i][j] == number) {
             return 1;
@@ -82,7 +107,8 @@ int checkLine(int number, int j) {
 }
 
 // checkColumn goes through each column and checks if the number is present. Returns true if found
-int checkColumn(int number, int i) {
+int checkColumn(int number, int i, char sudoku[9][9]) {
+
     for (int j = 0; j < 9; ++j) {
         if (sudoku[i][j] == number) {
             return 1;
@@ -92,7 +118,7 @@ int checkColumn(int number, int i) {
 }
 
 // checkBox goes through the box and checks if the number is present. Returns true if found. Box ranges from 1-9.
-int checkBox(int number, int box) {
+int checkBox(int number, int box, char sudoku[9][9]) {
     box = box - 1;
     int offsetV = box / 3;
     int offsetH = box % 3;
@@ -108,7 +134,7 @@ int checkBox(int number, int box) {
 }
 
 // checkBoxFromPos goes through the box and checks if the number is present. Returns true if found. Box ranges from 1-9.
-int checkBoxFromPos(int number, int i, int j) {
+int checkBoxFromPos(int number, int i, int j, char sudoku[9][9]) {
     int offsetV = j / 3;
     int offsetH = i / 3;
 
@@ -125,12 +151,27 @@ int checkBoxFromPos(int number, int i, int j) {
     return 0;
 }
 
-int brute() {
+
+int brute(int start, int myid, pthread_rwlock_t *p) {
+    char localSudoku[9][9];
+
+    if (pthread_rwlock_rdlock(p) != 0) {
+        perror("reader_threadB: pthread_rwlock_rdlock error");
+        exit(__LINE__);
+    }
+    memcpy(&localSudoku, &sudoku, sizeof (char) * 9 * 9);
+    if (pthread_rwlock_unlock(p) != 0) {
+        perror("reader thread: pthred_rwlock_unlock error");
+        exit(__LINE__);
+    }
+
     int found = 0;
-    for (int number = 1; number <= 9; ++number) {
+    for (int round = 0; round < 9; ++round) {
+        int number = ((round+start-1)%9)+1;
+        //printf("%d, ",number);
 
         for (int i = 0; i < 9; ++i) {
-            if (checkColumn(number, i)) {
+            if (checkColumn(number, i, localSudoku)) {
                 continue;
             }
             int potentialPositions = 0;
@@ -141,33 +182,127 @@ int brute() {
                 if (sudoku[i][j]) continue;
 
                 //if ((i%3 == 0 ) && (j%3 == 0 )) {
-                    if(checkBoxFromPos(number, i, j)) {
+                    if(checkBoxFromPos(number, i, j, localSudoku)) {
                         continue; //TODO: do more here?
                     }
                 //}
-                if (!checkLine(number, j)) {
+                if (!checkLine(number, j, localSudoku)) {
                     potentialPositions++;
                     position = j;
                 }
             }
 
             if (potentialPositions == 1) {
-                if (sudoku[i][position]) continue;
-                sudoku[i][position] = number;
-                printf("Put in number: %d, at i: %d, j: %d\n", number, i, position);
+
+                if (pthread_rwlock_wrlock(p) != 0) {
+                    perror("writer thread: pthread_rwlock_wrlock error");
+                    exit(__LINE__);
+                }
+                if (!sudoku[i][position])
+                    sudoku[i][position] = number;
+                if (pthread_rwlock_unlock(p) != 0) {
+                    perror("writer thread: pthread_rwlock_unlock error");
+                    exit(__LINE__);
+                }
+
+                printf("Thread %d, Put in number: %d, at i: %d, j: %d\n", myid, number, i, position);
                 found++;
+
+                Sleep(50);
             }
+
         }
     }
     return found;
 }
 
+void *runBrute(void *vargp) {
+    arg_struct *arg = vargp;
+    int *myid = (int *)arg->tid;
+    int start = abs(*myid)%9;
+
+    printf("Thread ID: %d, Start: %d\n", *myid, start);
+
+    while (1){
+        brute(start+1, *myid, arg->lock);
+    };
+}
+
+void *runCheck(void *vargp) {
+    while(!checkSudoku(vargp)) {
+
+    }
+    printf("Check complete!");
+    return 0;
+}
 
 int main() {
     printSudoku();
-    while (brute());
+
+    int i;
+    pthread_t checkTid, tid1, tid2;
+    void *vp;
+
+    arg_struct arg1;
+    arg1.lock = &lock_rw;
+    arg1.tid = &checkTid;
+    if (pthread_create(&checkTid, NULL, runCheck, &arg1) != 0) {
+        perror("pthread_create error");
+        exit (__LINE__);
+    }
+
+
+    arg_struct arg2;
+    arg2.lock = &lock_rw;
+    arg2.tid = &tid1;
+    if (pthread_create(&tid1, NULL, runBrute, &arg2) != 0) {
+        perror("pthread_create error");
+        exit (__LINE__);
+    }
+
+    Sleep(25);
+    arg_struct arg3;
+    arg3.lock = &lock_rw;
+    arg3.tid = &tid2;
+    if (pthread_create(&tid2, NULL, runBrute, &arg3) != 0) {
+        perror("pthread_create error");
+        exit (__LINE__);
+    }
+
+
+    printf("Waiting...\n");
+
+    //wait for the thread to complete
+    if (pthread_join(checkTid, &vp) != 0) {
+        perror("pthread_join error");
+        exit (__LINE__);
+    }
+    pthread_cancel(tid1);
+    pthread_cancel(tid2);
+    printf("Done!");
+
+    //wait for the thread to complete
+    if (pthread_join(tid1, &vp) != 0) {
+        perror("pthread_join error");
+        exit (__LINE__);
+    }
+
+    if (pthread_join(tid2, &vp) != 0) {
+        perror("pthread_join error");
+        exit (__LINE__);
+    }
+
+    //while (brute(4));
+
     printf("\n\n");
     printSudoku();
-    printf("Done? %s", checkSudoku() ? "Yes" : "No");
+
+
+    arg_struct arg4;
+    arg4.lock = &lock_rw;
+    printf("Done? %s\n", checkSudoku(&arg4) ? "Yes" : "No");
+
+
+    pthread_exit(NULL);
     return 0;
 }
