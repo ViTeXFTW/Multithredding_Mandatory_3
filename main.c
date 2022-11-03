@@ -62,6 +62,7 @@ void printSudoku() {
         }
         printf("\n");
     }
+    printf("\n");
 }
 
 int checkSudoku(void *vargp) {
@@ -207,7 +208,8 @@ int brute(int number, int myid, pthread_rwlock_t *p) {
                     exit(__LINE__);
                 }
 
-                printf("Thread %d, Put in number: %d, at i: %d, j: %d\n", myid, number, i, position);
+                printf("Thread %d, Put in number: %d, at V: %d, H: %d\n", myid, number, i+1, position+1);
+                //printSudoku();
                 found++;
 
                 Sleep(50);
@@ -240,6 +242,7 @@ void *runCheck(void *vargp) {
 int main() {
     printSudoku();
 
+
     pthread_t checkTid;
     pthread_t tid[9];
 
@@ -271,6 +274,7 @@ int main() {
         }
     }
 
+    Sleep(1);
     printf("Waiting...\n");
 
     /*if (pthread_rwlock_unlock(&lock_rw) != 0) {
