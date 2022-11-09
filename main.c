@@ -6,12 +6,15 @@
 #include<pthread.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys\timeb.h>
 
 #include <Windows.h>
 
 typedef struct {
     pthread_rwlock_t *lock;
     pthread_t *tid;
+    int *stuckArr[9];
+    int *stuck;
     int i;
 } arg_struct;
 
@@ -19,6 +22,18 @@ pthread_rwlock_t lock_rw = PTHREAD_RWLOCK_INITIALIZER;
 
 char sudoku[9][9];
 
+char sudokus[1][9][9] = {{{1, 9, 3, 0, 4, 2, 7, 6, 0},
+{7, 0, 0, 0, 0, 0, 0, 9, 0},
+{8, 0, 0, 0, 7, 6, 0, 5, 3},
+{9, 4, 0, 6, 1, 3, 0, 8, 0},
+{6, 3, 7, 2, 8, 0, 5, 1, 9},
+{0, 8, 1, 7, 0, 0, 0, 4, 6},
+{5, 1, 0, 8, 0, 0, 0, 0, 0},
+{0, 6, 0, 0, 2, 0, 0, 7, 1},
+{3, 7, 0, 4, 9, 1, 6, 0, 0},
+},};
+
+/*
 char sudokus[6][9][9] = {{{0, 3, 0, 0, 0, 1, 9, 0, 0},
                                  {1, 0, 9, 5, 0, 0, 2, 0, 4},
                                  {2, 0, 0, 9, 0, 7, 6, 0, 5},
@@ -79,7 +94,7 @@ char sudokus[6][9][9] = {{{0, 3, 0, 0, 0, 1, 9, 0, 0},
                                  {5, 0, 0, 2, 0, 8, 0, 0, 0},
                                  {0, 0, 4, 0, 0, 0, 0, 0, 0},},
 };
-
+*/
 
 //277
 char sudoku2[9][9] = {{0, 0, 0, 0, 0, 0, 1, 0, 0},
@@ -251,7 +266,6 @@ int brute(int number, int myid, pthread_rwlock_t *p) {
         exit(__LINE__);
     }
 
-    int found = 0;
     /*for (int round = 0; round < 9; ++round) {
         int number = ((round+start-1)%9)+1;*/
     //printf("%d, ",number);
@@ -265,7 +279,7 @@ int brute(int number, int myid, pthread_rwlock_t *p) {
 
 
         for (int j = 0; j < 9; ++j) {
-            //Sleep(25);
+            //Sleep(1);
             if (sudoku[i][j]) continue;
 
             if (checkBoxFromPos(number, i, j, localSudoku)) {
@@ -293,14 +307,13 @@ int brute(int number, int myid, pthread_rwlock_t *p) {
 
             //printf("Thread %d, Put in number: %d, at V: %d, H: %d\n", myid, number, i + 1, position + 1);
             //printSudoku();
-            found++;
+            return 1;
 
             //Sleep(50);
         }
 
     }
-    //}
-    return found;
+    return 0;
 }
 
 
@@ -499,9 +512,18 @@ void *runBrute(void *vargp) {
     //printf("Thread ID: %d, Start: %d\n", *myid, arg->i);
     Sleep(2);
 
+    int stuck = 1;
+    int res;
     while (1) {
-        brute(arg->i, *myid, arg->lock);
-    };
+        res = brute(arg->i, *myid, arg->lock);
+
+        if (stuck == res && res == 0) {
+            *(arg->stuck) = 1;
+        } else {
+            *(arg->stuck)  = 0;
+        }
+        stuck = res;
+    }
 }
 
 void *runCheck(void *vargp) {
@@ -517,11 +539,85 @@ void *runCheck(void *vargp) {
     return 0;
 }
 
-int main() {
-    char single = 1;
+void *runStuck(void *vargp) {
+    Sleep(1);
+    arg_struct *arg = vargp;
+
+
+
+    int i = 0;
+    int total = 0;
+    while (!checkSudoku(vargp)) {
+        i++;
+        if (i > 20000) {
+            printf("Timeout!\n");
+            return 0;
+        }
+
+
+        for (int j = 0; j < 9; ++j) {
+           //printf("s %d, %d\n", j, *arg->stuckArr[j]);
+           if (*arg->stuckArr[j]) {
+               total++;
+           }
+        }
+        //printf("Total: %d\n", total);
+        if (total < 9) {
+            total = 0;
+        }
+        if (total > 18) {
+            printf("Stuck?\n");
+            return 0;
+        }
+    }
+
+    return 0;
+
+}
+
+void runSingle() {
     int successCounter = 0;
 
-    int length = sizeof(sudokus) / sizeof(sudokus[0]);
+    int length = 1000;//= sizeof(sudokus) / sizeof(sudokus[0]);
+    for (int s = 0; s < length; ++s) {
+
+        printf("Starting new sudoku %d\n\n", s + 1);
+
+        memcpy(&sudoku, &sudokus[0], sizeof(char) * 9 * 9);
+
+        printSudoku();
+
+        while (oldBrute(sudoku));
+
+        /*
+        if (!oldCheck(sudoku)) {
+            printf("\n");
+            printSudoku();
+            printf("\n");
+
+            printf("Solved by smartsolve: %s", smarterSolve(sudoku) ? "Yes" : "No");
+        }
+        */
+
+        printf("\n\n");
+        printSudoku();
+
+
+        arg_struct arg4;
+        arg4.lock = &lock_rw;
+        int success = checkSudoku(&arg4);
+        printf("Done? %s\n\n", success ? "Yes" : "No");
+        if (success) {
+            successCounter++;
+        }
+    }
+    printf("\nSingle solved %d/%d\n", successCounter, length);
+}
+
+void runMulti() {
+    int successCounter = 0;
+
+    int length = 1000; //sizeof(sudokus) / sizeof(sudokus[0]);
     for (int s = 0; s < length; ++s) {
 
         printf("Starting new sudoku %d\n\n", s + 1);
@@ -530,7 +626,7 @@ int main() {
             perror("master thread: pthread_rwlock_wrlock error");
             exit(__LINE__);
         }
-        memcpy(&sudoku, &sudokus[s], sizeof(char) * 9 * 9);
+        memcpy(&sudoku, &sudokus[0], sizeof(char) * 9 * 9);
         if (pthread_rwlock_unlock(&lock_rw) != 0) {
             perror("master thread: pthread_unlock_wrlock error");
             exit(__LINE__);
@@ -538,36 +634,15 @@ int main() {
 
         printSudoku();
 
-        if (single) {
-            while (oldBrute(sudoku));
-
-            if (!oldCheck(sudoku)) {
-            printf("\n");
-            printSudoku();
-            printf("\n");
-
-            printf("Solved by smartsolve: %s", smarterSolve(sudoku) ? "Yes" : "No");
-            }
-
-            printf("\n\n");
-            printSudoku();
-
-
-            arg_struct arg4;
-            arg4.lock = &lock_rw;
-            int success = checkSudoku(&arg4);
-            printf("Done? %s\n\n", success ? "Yes" : "No");
-            if (success) {
-                successCounter++;
-            }
-        } else {
-
-
             pthread_t checkTid;
+            pthread_t stuckTid;
             pthread_t tid[9];
+            int stuck[9];
+
 
             void *vp;
 
+            /*
             arg_struct arg1;
             arg1.lock = &lock_rw;
             arg1.tid = &checkTid;
@@ -575,13 +650,19 @@ int main() {
                 perror("pthread_create error");
                 exit(__LINE__);
             }
+            */
 
-            /*
-            if (pthread_rwlock_wrlock(&lock_rw) != 0) {
-                perror("writer thread: pthread_rwlock_wrlock error");
+            arg_struct arg2;
+            arg2.lock = &lock_rw;
+            arg2.tid = &checkTid;
+            for (int i = 0; i < 9; ++i) {
+                stuck[i] = 0;
+                arg2.stuckArr[i] = &stuck[i];
+            }
+            if (pthread_create(&stuckTid, NULL, runStuck, &arg2) != 0) {
+                perror("pthread_create error");
                 exit(__LINE__);
             }
-             */
 
             if (s == 0) {
                 arg_struct arg[9];
@@ -589,6 +670,8 @@ int main() {
                     arg[j].lock = &lock_rw;
                     arg[j].i = j + 1;
                     arg[j].tid = &tid[j];
+                    arg[j].stuck = &stuck[j];
+                    stuck[j] = 0;
                     if (pthread_create(&tid[j], NULL, runBrute, &arg[j]) != 0) {
                         perror("pthread_create error");
                         exit(__LINE__);
@@ -604,20 +687,27 @@ int main() {
                 exit(__LINE__);
             }*/
 
+        //wait for the solvers to be stuck
+        if (pthread_join(stuckTid, &vp) != 0) {
+            perror("pthread_join error");
+            exit(__LINE__);
+        }
+
+
+
             //wait for the thread to complete
-            if (pthread_join(checkTid, &vp) != 0) {
+            /*if (pthread_join(checkTid, &vp) != 0) {
                 perror("pthread_join error");
                 exit(__LINE__);
             }
+             */
+
             // Kill all worker threads if last sudoku
             if (s == length - 1) {
                 for (int i = 0; i < 9; ++i) {
                     pthread_cancel(tid[i]);
                 }
             }
-
-            //while (brute(4));
-
 
             printf("\n\n");
             printSudoku();
@@ -626,15 +716,36 @@ int main() {
             arg_struct arg4;
             arg4.lock = &lock_rw;
             int success = checkSudoku(&arg4);
-            printf("Done? %s\n\n", success ? "Yes" : "No");
             if (success) {
                 successCounter++;
             }
-        }
+            printf("Done? %s\n\n", success ? "Yes" : "No");
+
 
     }
-    printf("\nSolved %d/%d\n", successCounter, length);
+    printf("\nMulti solved %d/%d\n", successCounter, length);
+}
 
+int main() {
+    struct timeb start, mid, end;
+    int diff;
+
+
+    ftime(&start);
+    runSingle();
+    ftime(&mid);
+    runMulti();
+    ftime(&end);
+
+    diff = (int) (1000.0 * (mid.time - start.time)
+                  + (mid.millitm - start.millitm));
+
+    printf("\nSingle took %u milliseconds\n", diff);
+
+    diff = (int) (1000.0 * (end.time - mid.time)
+                  + (end.millitm - mid.millitm));
+
+    printf("\nMulti took %u milliseconds\n", diff);
     // pthread_exit(NULL);
     return 0;
 }
