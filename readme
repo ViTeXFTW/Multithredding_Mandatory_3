@@ -11,6 +11,47 @@ faster it would be if you were able to look for every number at the same time.
 For this we created a solver which creates a thread for each number, and all these threads
 share the same board and work on it at the same time. Every individual thread is just running a
 brute force method where we check every available positions if that threads number can be
-placed in the box. When a number is placed the whole board is updated and all threads gets an updated
-version of the board. 
+placed in the box. Every time a thread has complete a full look through of the board it updates
+it board to see if any other thread has found a number.
+
+Potential issues:
+
+
+Race condition:
+For this program a race condition could be when a thread is done checking its boxes
+and tries to update the board when another thread is trying to write in a new number.
+Here the thread then woudln't get the newest version of the board.
+
+Race condition solution:
+As a solution we have decided to use mutual exclution this is where we lock every other thread out
+of the shared memory when another thread is reading or writing to it. Every time a thread is writing to
+the shared sudoku board it locks that part of memory from other threads. The same goes for when a thread
+wants to read from the board. To make sure nothing changes while the thread is copying the board it locks
+that part of memory from the other threads. 
+
+Deadlocks and starvation:
+For this program a deadlock could happen when either the program is givin a sudoku that isn't possible. 
+Here all the threads would end up in a deadlock where they all need another thread to give a new number
+but there isn't any thread capable of this.
+Another deadlock could be that the sudoku is possible but not with the implementation we have made. Here 
+it would end up in the same senario where the threads are waiting for the others to find a new number. 
+
+
+Deadlock and starvation solutions:
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
