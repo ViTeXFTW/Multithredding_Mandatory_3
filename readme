@@ -36,6 +36,8 @@ but there isn't any thread capable of this.
 Another deadlock could be that the sudoku is possible but not with the implementation we have made. Here 
 it would end up in the same senario where the threads are waiting for the others to find a new number. 
 
+Starvation could happen if one thread always have access to the shared memory and therefor locks
+all the other threads out. Then all other threads would end up in a wait state.
 
 Deadlock and starvation solutions:
 
