@@ -1,0 +1,16 @@
+-----------------------------------
+Mandatory Assignment 3 - Group 13.
+Sudoku solver
+-----------------------------------
+
+For this assignment we have decided to create a sudoku solver.
+In sudokus you normally need to look for one number at a time. And then
+go through every number from 1-9. For this assignment we thougth about how much
+faster it would be if you were able to look for every number at the same time. 
+
+For this we created a solver which creates a thread for each number, and all these threads
+share the same board and work on it at the same time. Every individual thread is just running a
+brute force method where we check every available positions if that threads number can be
+placed in the box. When a number is placed the whole board is updated and all threads gets an updated
+version of the board. 
+
