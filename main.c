@@ -20,18 +20,39 @@ typedef struct {
 
 pthread_rwlock_t lock_rw = PTHREAD_RWLOCK_INITIALIZER;
 
+void wrlock(pthread_rwlock_t *lock_rw) {
+    if (pthread_rwlock_wrlock(lock_rw) != 0) {
+        perror("master thread: pthread_rwlock_wrlock error");
+        exit(__LINE__);
+    }
+}
+
+void rdlock(pthread_rwlock_t *lock_rw) {
+    if (pthread_rwlock_rdlock(lock_rw) != 0) {
+        perror("master thread: pthread_rwlock_rdlock error");
+        exit(__LINE__);
+    }
+}
+
+void unlock(pthread_rwlock_t *lock_rw) {
+    if (pthread_rwlock_unlock(lock_rw) != 0) {
+        perror("master thread: pthread_unlock_wrlock error");
+        exit(__LINE__);
+    }
+}
+
 char sudoku[9][9];
 
 char sudokus[1][9][9] = {{{1, 9, 3, 0, 4, 2, 7, 6, 0},
-{7, 0, 0, 0, 0, 0, 0, 9, 0},
-{8, 0, 0, 0, 7, 6, 0, 5, 3},
-{9, 4, 0, 6, 1, 3, 0, 8, 0},
-{6, 3, 7, 2, 8, 0, 5, 1, 9},
-{0, 8, 1, 7, 0, 0, 0, 4, 6},
-{5, 1, 0, 8, 0, 0, 0, 0, 0},
-{0, 6, 0, 0, 2, 0, 0, 7, 1},
-{3, 7, 0, 4, 9, 1, 6, 0, 0},
-},};
+                          {7, 0, 0, 0, 0, 0, 0, 9, 0},
+                          {8, 0, 0, 0, 7, 6, 0, 5, 3},
+                          {9, 4, 0, 6, 1, 3, 0, 8, 0},
+                          {6, 3, 7, 2, 8, 0, 5, 1, 9},
+                          {0, 8, 1, 7, 0, 0, 0, 4, 6},
+                          {5, 1, 0, 8, 0, 0, 0, 0, 0},
+                          {0, 6, 0, 0, 2, 0, 0, 7, 1},
+                          {3, 7, 0, 4, 9, 1, 6, 0, 0},
+                         },};
 
 /*
 char sudokus[6][9][9] = {{{0, 3, 0, 0, 0, 1, 9, 0, 0},
@@ -146,7 +167,7 @@ void printSudoku() {
     printf("\n");
 }
 
-int oldCheck(char sudoku[9][9]) {
+int oldCheck() {
     for (int i = 0; i < 9; ++i) {
         char found[9] = {0, 0, 0, 0, 0, 0, 0, 0, 0};
 
@@ -167,29 +188,22 @@ int oldCheck(char sudoku[9][9]) {
 int checkSudoku(void *vargp) {
     arg_struct *arg = vargp;
     pthread_rwlock_t *p = arg->lock;
-    char localSudoku[9][9];
-
-    if (pthread_rwlock_rdlock(p) != 0) {
-        perror("reader_threadC: pthread_rwlock_rdlock error");
-        exit(__LINE__);
-    }
-    memcpy(&localSudoku, &sudoku, sizeof(char) * 9 * 9);
-    if (pthread_rwlock_unlock(p) != 0) {
-        perror("reader threadC: pthred_rwlock_unlock error");
-        exit(__LINE__);
-    }
+    //char localSudoku[9][9];
 
     for (int i = 0; i < 9; ++i) {
         char found[9] = {0, 0, 0, 0, 0, 0, 0, 0, 0};
 
         for (int j = 0; j < 9; ++j) {
-            if (localSudoku[i][j] == 0) {
+            //rdlock(p);
+            int val = sudoku[i][j];
+            //unlock(p);
+            if (val == 0) {
                 return 0;
             }
-            if (found[localSudoku[i][j] - 1]) {
+            if (found[val - 1]) {
                 return 0;
             }
-            found[localSudoku[i][j] - 1]++;
+            found[val - 1]++;
         }
     }
 
@@ -411,7 +425,7 @@ int smarterSolve(char sudoku[9][9]) {
             if (checkLine(number, least, sudoku)) continue;
             sudoku[least][i] = number;
             for (int j = 0; j < empty; ++j) {
-                if (oldBrute(sudoku)==0) break;
+                if (oldBrute(sudoku) == 0) break;
             }
             if (oldCheck(sudoku)) {
                 printf("Solved by smart solve!\n");
@@ -510,19 +524,10 @@ void *runBrute(void *vargp) {
     int *myid = (int *) arg->tid;
 
     //printf("Thread ID: %d, Start: %d\n", *myid, arg->i);
-    Sleep(2);
+    //Sleep(2);
 
-    int stuck = 1;
-    int res;
     while (1) {
-        res = brute(arg->i, *myid, arg->lock);
-
-        if (stuck == res && res == 0) {
-            *(arg->stuck) = 1;
-        } else {
-            *(arg->stuck)  = 0;
-        }
-        stuck = res;
+        *(arg->stuck) = brute(arg->i, *myid, arg->lock);
     }
 }
 
@@ -535,43 +540,36 @@ void *runCheck(void *vargp) {
             return 0;
         }
     }
-    printf("Check complete!\n");
+    //printf("Check complete!\n");
     return 0;
 }
 
 void *runStuck(void *vargp) {
-    Sleep(1);
     arg_struct *arg = vargp;
 
+    while (1) {
+        int total = 0;
+        while (arg->i) {
+            arg->i = !checkSudoku(vargp);
 
 
-    int i = 0;
-    int total = 0;
-    while (!checkSudoku(vargp)) {
-        i++;
-        if (i > 20000) {
-            printf("Timeout!\n");
-            return 0;
-        }
-
-
-        for (int j = 0; j < 9; ++j) {
-           //printf("s %d, %d\n", j, *arg->stuckArr[j]);
-           if (*arg->stuckArr[j]) {
-               total++;
-           }
-        }
-        //printf("Total: %d\n", total);
-        if (total < 9) {
-            total = 0;
-        }
-        if (total > 18) {
-            printf("Stuck?\n");
-            return 0;
+            for (int j = 0; j < 9; ++j) {
+                //printf("s %d, %d\n", j, *arg->stuckArr[j]);
+                if (*arg->stuckArr[j]) {
+                    total++;
+                }
+            }
+            //printf("Total: %d\n", total);
+            if (total < 9) {
+                total = 0;
+            }
+            if (total >= 18) {
+                //printf("Stuck?\n");
+                arg->i = 0;
+            }
         }
     }
 
-    return 0;
 
 }
 
@@ -581,11 +579,11 @@ void runSingle() {
     int length = 1000;//= sizeof(sudokus) / sizeof(sudokus[0]);
     for (int s = 0; s < length; ++s) {
 
-        printf("Starting new sudoku %d\n\n", s + 1);
+        //printf("Starting new sudoku %d\n\n", s + 1);
 
         memcpy(&sudoku, &sudokus[0], sizeof(char) * 9 * 9);
 
-        printSudoku();
+        //printSudoku();
 
         while (oldBrute(sudoku));
 
@@ -599,14 +597,14 @@ void runSingle() {
         }
         */
 
-        printf("\n\n");
-        printSudoku();
+        //printf("\n\n");
+        //printSudoku();
 
 
         arg_struct arg4;
         arg4.lock = &lock_rw;
         int success = checkSudoku(&arg4);
-        printf("Done? %s\n\n", success ? "Yes" : "No");
+        //printf("Done? %s\n\n", success ? "Yes" : "No");
         if (success) {
             successCounter++;
         }
@@ -617,42 +615,39 @@ void runSingle() {
 void runMulti() {
     int successCounter = 0;
 
+    pthread_t checkTid;
+    pthread_t stuckTid;
+    pthread_t tid[9];
+    int stuck[9];
+
+    void *vp;
+
     int length = 1000; //sizeof(sudokus) / sizeof(sudokus[0]);
     for (int s = 0; s < length; ++s) {
 
-        printf("Starting new sudoku %d\n\n", s + 1);
+        //printf("Starting new sudoku %d\n\n", s + 1);
 
-        if (pthread_rwlock_wrlock(&lock_rw) != 0) {
-            perror("master thread: pthread_rwlock_wrlock error");
-            exit(__LINE__);
-        }
+        wrlock(&lock_rw);
         memcpy(&sudoku, &sudokus[0], sizeof(char) * 9 * 9);
-        if (pthread_rwlock_unlock(&lock_rw) != 0) {
-            perror("master thread: pthread_unlock_wrlock error");
+        unlock(&lock_rw);
+
+        //printSudoku();
+
+
+        /*
+        arg_struct arg1;
+        arg1.lock = &lock_rw;
+        arg1.tid = &checkTid;
+        if (pthread_create(&checkTid, NULL, runCheck, &arg1) != 0) {
+            perror("pthread_create error");
             exit(__LINE__);
         }
+        */
 
-        printSudoku();
+        arg_struct arg2;
+        arg2.i = 1;
 
-            pthread_t checkTid;
-            pthread_t stuckTid;
-            pthread_t tid[9];
-            int stuck[9];
-
-
-            void *vp;
-
-            /*
-            arg_struct arg1;
-            arg1.lock = &lock_rw;
-            arg1.tid = &checkTid;
-            if (pthread_create(&checkTid, NULL, runCheck, &arg1) != 0) {
-                perror("pthread_create error");
-                exit(__LINE__);
-            }
-            */
-
-            arg_struct arg2;
+        if (s == 0) {
             arg2.lock = &lock_rw;
             arg2.tid = &checkTid;
             for (int i = 0; i < 9; ++i) {
@@ -663,63 +658,64 @@ void runMulti() {
                 perror("pthread_create error");
                 exit(__LINE__);
             }
-
-            if (s == 0) {
-                arg_struct arg[9];
-                for (int j = 0; j < 9; ++j) {
-                    arg[j].lock = &lock_rw;
-                    arg[j].i = j + 1;
-                    arg[j].tid = &tid[j];
-                    arg[j].stuck = &stuck[j];
-                    stuck[j] = 0;
-                    if (pthread_create(&tid[j], NULL, runBrute, &arg[j]) != 0) {
-                        perror("pthread_create error");
-                        exit(__LINE__);
-                    }
+            arg_struct arg[9];
+            for (int j = 0; j < 9; ++j) {
+                arg[j].lock = &lock_rw;
+                arg[j].i = j + 1;
+                arg[j].tid = &tid[j];
+                arg[j].stuck = &stuck[j];
+                stuck[j] = 0;
+                if (pthread_create(&tid[j], NULL, runBrute, &arg[j]) != 0) {
+                    perror("pthread_create error");
+                    exit(__LINE__);
                 }
-
-                Sleep(1);
             }
-            printf("Waiting...\n");
 
-            /*if (pthread_rwlock_unlock(&lock_rw) != 0) {
-                perror("writer thread: pthread_rwlock_wrlock error");
-                exit(__LINE__);
-            }*/
+            //Sleep(1);
+        }
+        //printf("Waiting...\n");
+
+        /*if (pthread_rwlock_unlock(&lock_rw) != 0) {
+            perror("writer thread: pthread_rwlock_wrlock error");
+            exit(__LINE__);
+        }*/
+
 
         //wait for the solvers to be stuck
-        if (pthread_join(stuckTid, &vp) != 0) {
+        /*if (pthread_join(stuckTid, &vp) != 0) {
+            perror("pthread_join error");
+            exit(__LINE__);
+        }*/
+
+        arg2.i = 1;
+        while (arg2.i);
+
+        //wait for the thread to complete
+        /*if (pthread_join(checkTid, &vp) != 0) {
             perror("pthread_join error");
             exit(__LINE__);
         }
+         */
 
-
-
-            //wait for the thread to complete
-            /*if (pthread_join(checkTid, &vp) != 0) {
-                perror("pthread_join error");
-                exit(__LINE__);
+        // Kill all worker threads if last sudoku
+        if (s == length - 1) {
+            for (int i = 0; i < 9; ++i) {
+                pthread_cancel(tid[i]);
             }
-             */
+            pthread_cancel(stuckTid);
+        }
 
-            // Kill all worker threads if last sudoku
-            if (s == length - 1) {
-                for (int i = 0; i < 9; ++i) {
-                    pthread_cancel(tid[i]);
-                }
-            }
-
-            printf("\n\n");
-            printSudoku();
+        //printf("\n\n");
+        //printSudoku();
 
 
-            arg_struct arg4;
-            arg4.lock = &lock_rw;
-            int success = checkSudoku(&arg4);
-            if (success) {
-                successCounter++;
-            }
-            printf("Done? %s\n\n", success ? "Yes" : "No");
+        arg_struct arg4;
+        arg4.lock = &lock_rw;
+        int success = checkSudoku(&arg4);
+        if (success) {
+            successCounter++;
+        }
+        //printf("Done? %s\n\n", success ? "Yes" : "No");
 
 
     }
@@ -749,3 +745,4 @@ int main() {
     // pthread_exit(NULL);
     return 0;
 }
+
