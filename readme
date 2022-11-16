@@ -15,7 +15,8 @@ placed in the box. Every time a thread has complete a full look through of the b
 it board to see if any other thread has found a number.
 
 Potential issues:
-
+We need to find a way to make sure that all threads have the same grid with numbers that are up to date. 
+And at the same time be sure that if two threads find a number at the same time that they wait for each other to finish updating the sudoku grid.
 
 Race condition:
 For this program a race condition could be when a thread is done checking its boxes
