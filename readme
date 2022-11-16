@@ -30,7 +30,7 @@ wants to read from the board. To make sure nothing changes while the thread is c
 that part of memory from the other threads. 
 
 Deadlocks and starvation:
-For this program a deadlock could happen when either the program is givin a sudoku that isn't possible. 
+For this program a deadlock could happen when either the program is given a sudoku that isn't possible. 
 Here all the threads would end up in a deadlock where they all need another thread to give a new number
 but there isn't any thread capable of this.
 Another deadlock could be that the sudoku is possible but not with the implementation we have made. Here 
